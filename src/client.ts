@@ -75,7 +75,7 @@ export class FALClient {
     const items = dom.window.document.querySelectorAll('item');
     const warnings: FALWarning[] = [];
     
-    items.forEach(item => {
+    items.forEach((item: any) => {
       const title = item.querySelector('title');
       const date = item.querySelector('pubDate');
       const link = item.querySelector('link');
