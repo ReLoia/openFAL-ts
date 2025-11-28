@@ -1,0 +1,31 @@
+{
+  "name": "openfal-ts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "tsc dist/test.ts"
+  },
+  "keywords": [
+    "fal",
+    "italy",
+    "transportation",
+    "trains",
+    "buses"
+  ],
+  "author": "reloia",
+  "license": "ISC",
+  "dependencies": {
+    "jsdom": "^27.2.0",
+    "ofetch": "^1.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.4.2",
+    "typescript": "^5.1.6",
+    "undici": "^7.16.0"
+  }
+}
