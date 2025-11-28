@@ -1,15 +1,18 @@
 {
   "name": "openfal-ts",
   "version": "1.0.0",
-  "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "files": ["dist"],
+
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "tsc dist/test.ts"
+    "prepare": "npm run build"
   },
+
+  "author": "reloia",
+
   "keywords": [
     "fal",
     "italy",
@@ -17,7 +20,7 @@
     "trains",
     "buses"
   ],
-  "author": "reloia",
+
   "license": "ISC",
   "dependencies": {
     "jsdom": "^27.2.0",
