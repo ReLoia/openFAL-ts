@@ -98,3 +98,34 @@ export interface FALScheduleRoute {
 export interface FALScheduleResult {
     percorsi: FALScheduleRoute[];
 }
+
+export interface UserInfo {
+    responseCode: number;
+    
+    firstname: string;
+    surname: string;
+    birthdate: string;
+}
+
+export interface BoughtTicketInfo {
+    numTicket: string;
+    numVendita: string;
+    stazioneFermataStart: string;
+    stazioneFermataStop: string;
+    type: string;
+    transport: string;
+    price: number;
+    name: string;
+    birthdate: string;
+    validStart: string;
+    validEnd: string;
+    pnr: string;
+    qrcode: string;
+}
+
+export interface TicketURLInfo {
+    responseCode: number;
+    
+    numVendita: string;
+    urlPayment: string;
+}

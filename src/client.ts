@@ -1,12 +1,29 @@
 import { ofetch } from "ofetch";
 import { JSDOM } from "jsdom";
+import crypto from "crypto";
 import {
-  FALRTBusTrip, FALStation, FALRTTrainTrip, FALRTBusTripStation, FALRTTrainTripInfo, FALWarning,
-  FALScheduleResult
+  BoughtTicketInfo,
+  FALRTBusTrip,
+  FALRTBusTripStation,
+  FALRTTrainTrip,
+  FALRTTrainTripInfo,
+  FALScheduleResult,
+  FALStation,
+  FALWarning, TicketURLInfo,
+  UserInfo
 } from "./types";
 
 const BASE_URL = 'https://fal.ferrovieappulolucane.it/';
 
+function hashMD5(input: string): string {
+  return crypto.createHash('md5').update(input).digest('hex');
+}
+
+/**
+ * Action:
+ * 40 - get my tickets
+ * 
+ */
 export class FALClient {
   private async request<T>(urlArgs: string, options: any = {}): Promise<T> {
     return ofetch<T>('app_geotourist.php' + urlArgs, {
@@ -85,5 +102,54 @@ export class FALClient {
     });
     
     return warnings;
+  }
+  
+  async login(email: string, password: string): Promise<UserInfo> {
+    return await this.request<UserInfo>('?action=37', {
+      method: 'POST',
+      responseType: 'json',
+      body: {
+        email,
+        password: hashMD5(password)
+      }
+    })
+  }
+  
+  async getUserTickets(email: string, password: string): Promise<BoughtTicketInfo[]> {
+    return await this.request<BoughtTicketInfo[]>('?action=40', {
+      method: 'POST',
+      responseType: 'json',
+      body: {
+        email,
+        password: hashMD5(password)
+      }
+    })
+  }
+
+  async genTicketURL(
+      idstart: string | number, 
+      idstop: string | number, 
+      date: Date,
+      name: string,
+      birthdate: string,
+      
+      email: string,
+      password: string
+  ): Promise<TicketURLInfo> {
+    return await this.request<TicketURLInfo>('?action=53', {
+      method: 'POST',
+      responseType: 'json',
+      body: {
+        idstart,
+        idstop,
+        date: date.toISOString().split('T')[0].replace(/-/g, ''),
+        name,
+        birthdate,
+        email,
+        password: hashMD5(password),
+        ticket_type: "3",
+        treno_plus_bus: "false"
+      }
+    })
   }
 }
