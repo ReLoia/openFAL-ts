@@ -11,7 +11,7 @@ import {
   FALStation,
   FALWarning, TicketURLInfo,
   UserInfo
-} from "./types";
+} from "./types.js";
 
 const BASE_URL = 'https://fal.ferrovieappulolucane.it/';
 
