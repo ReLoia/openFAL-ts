@@ -19,11 +19,6 @@ function hashMD5(input: string): string {
   return crypto.createHash('md5').update(input).digest('hex');
 }
 
-/**
- * Action:
- * 40 - get my tickets
- * 
- */
 export class FALClient {
   private async request<T>(urlArgs: string, options: any = {}): Promise<T> {
     return ofetch<T>('app_geotourist.php' + urlArgs, {

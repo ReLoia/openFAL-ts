@@ -53,8 +53,8 @@ export interface FALRTBusTripStation {
     descrizione: string;
     expected_passing_date: string;
     passing_date: string;
-    entering_date: string;
-    leaving_date: string;
+    entering_date: string | null;
+    leaving_date: string | null;
     ordine: number;
     lat: number;
     lon: number;
