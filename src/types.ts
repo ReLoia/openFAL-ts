@@ -15,7 +15,6 @@ export interface FALRealtimeStopTime {
   lng: number;
 }
 
-// The raw format returned by the new API
 export interface RawFALRealtimeTrip {
   trip_id: string;
   trip_name: string;
@@ -27,12 +26,9 @@ export interface FALRealtimeResponse {
   data: RawFALRealtimeTrip[];
 }
 
-// Enriched model to easily access the current status of the trip
 export interface FALRealtimeTrip {
   trip_id: string;
   trip_name: string;
-
-  // Enriched summary data (calculated from stopTimes)
   first_stop: string;
   last_stop: string;
   is_departed: boolean;
@@ -40,7 +36,6 @@ export interface FALRealtimeTrip {
   last_passed_stop: string | null;
   current_lat: number | null;
   current_lng: number | null;
-
   stopTimes: FALRealtimeStopTime[];
 }
 
@@ -81,12 +76,13 @@ export interface FALScheduleResult {
   percorsi: FALScheduleRoute[];
 }
 
+// Updated UserInfo to map with the new login response
 export interface UserInfo {
   responseCode: number;
-
   firstname: string;
   surname: string;
   birthdate: string;
+  email: string;
 }
 
 export interface BoughtTicketInfo {
@@ -109,4 +105,45 @@ export interface TicketURLInfo {
   responseCode: number;
   numVendita: string;
   urlPayment: string;
+}
+
+// --- NEW AUTHENTICATION TYPES ---
+
+export interface FALSessionTokenStoreResponse {
+  status: boolean;
+  message: string | null;
+  data: {
+    token: string;
+  } | null;
+}
+
+export interface FALSessionTokenCheckResponse {
+  status: boolean;
+  message: string | null;
+  data: {
+    authenticated: boolean;
+  } | null;
+}
+
+export interface FALLoginResponse {
+  utente?: {
+    localita: string;
+    cognome: string;
+    nome: string;
+    language: string;
+    login: string;
+    telefonoFisso: string;
+    codiceFiscale: string;
+    tessere: any[];
+    cap: string;
+    partitaIva: string;
+    nazione: string;
+    datanascita: string;
+    email: string;
+  };
+  operationCode: number;
+  operationMessage: string;
+  operationMessageInternal: string;
+  processTime: number;
+  elapsedTime: number;
 }

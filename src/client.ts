@@ -10,14 +10,69 @@ import {
   FALStation,
   FALWarning,
   TicketURLInfo,
-  UserInfo
+  UserInfo,
+  FALSessionTokenStoreResponse,
+  FALSessionTokenCheckResponse,
+  FALLoginResponse
 } from "./types.js";
 
 const BASE_URL = 'https://fal.ferrovieappulolucane.it/';
-const NEW_API_BASE_URL = 'https://app.ferrovieappulolucane.it/api/';
+const NEW_API_BASE_URL = 'https://app.ferrovieappulolucane.it/api';
+const ETICKET_API_BASE_URL = 'https://eticket.ferrovieappulolucane.it/b2capp';
 
 function hashMD5(input: string): string {
   return crypto.createHash('md5').update(input).digest('hex');
+}
+
+/**
+ * Session Manager to handle individual user sessions concurrently.
+ */
+export class FALSession {
+  public readonly token: string;
+
+  constructor(token: string) {
+    this.token = token;
+  }
+
+  /**
+   * Checks if this session token is currently authenticated.
+   */
+  async isLoggedIn(): Promise<boolean> {
+    const res = await ofetch<FALSessionTokenCheckResponse>(`${NEW_API_BASE_URL}/sessionTokens/check`, {
+      method: 'GET',
+      query: { token: this.token },
+      responseType: 'json',
+    });
+
+    return res.status === true && res.data?.authenticated === true;
+  }
+
+  /**
+   * Logs in a user for this specific session.
+   */
+  async login(email: string, password: string): Promise<UserInfo> {
+    const res = await ofetch<FALLoginResponse>(`${ETICKET_API_BASE_URL}//json/utente/login`, {
+      method: 'GET',
+      query: {
+        token: this.token,
+        username: email,
+        password: hashMD5(password)
+      },
+      responseType: 'json'
+    });
+
+    if (res.operationCode !== 0 || !res.utente) {
+      throw new Error(res.operationMessage || "Login failed");
+    }
+
+    return {
+      responseCode: res.operationCode,
+      firstname: res.utente.nome,
+      surname: res.utente.cognome,
+      birthdate: res.utente.datanascita,
+      email: res.utente.email
+    };
+  }
 }
 
 export class FALClient {
@@ -29,12 +84,23 @@ export class FALClient {
   }
 
   /**
-   * Helper function to map raw API responses into an enriched Trip object
-   * with easy access to current delay, location, and trip boundaries.
+   * Creates a new isolated authentication session.
    */
+  async createSession(): Promise<FALSession> {
+    const res = await ofetch<FALSessionTokenStoreResponse>(`${NEW_API_BASE_URL}/sessionTokens/store`, {
+      method: 'POST',
+      responseType: 'json'
+    });
+
+    if (!res.status || !res.data?.token) {
+      throw new Error("Failed to initialize session token");
+    }
+
+    return new FALSession(res.data.token);
+  }
+
   private enrichRealtimeTrip(raw: RawFALRealtimeTrip): FALRealtimeTrip {
     const stops = raw.stopTimes || [];
-
     const passedStops = stops.filter(s => s.passed);
     const lastPassed = passedStops.length > 0 ? passedStops[passedStops.length - 1] : null;
 
@@ -43,15 +109,11 @@ export class FALClient {
       trip_name: raw.trip_name,
       first_stop: stops[0]?.stop_name || '',
       last_stop: stops[stops.length - 1]?.stop_name || '',
-
-      // If it hasn't passed any stops, it hasn't departed.
-      // If it hasn't departed, use the predicted delay of the first stop (or 0).
       is_departed: passedStops.length > 0,
       current_delay: lastPassed ? lastPassed.delay : (stops[0]?.delay || 0),
       last_passed_stop: lastPassed ? lastPassed.stop_name : null,
       current_lat: lastPassed ? lastPassed.lat : null,
       current_lng: lastPassed ? lastPassed.lng : null,
-
       stopTimes: stops
     };
   }
@@ -124,24 +186,15 @@ export class FALClient {
       const date = item.querySelector('pubDate');
       const link = item.querySelector('link');
       if (title) {
-        warnings.push({ title: title.textContent || '', date: date?.textContent || '', link: link?.textContent || '' });
+        warnings.push({ title: title.textContent || '', date: date?.textContent || '', link: link?.textContent || '' } );
       }
     });
 
     return warnings;
   }
 
-  async login(email: string, password: string): Promise<UserInfo> {
-    return await this.request<UserInfo>('?action=37', {
-      method: 'POST',
-      responseType: 'json',
-      body: {
-        email,
-        password: hashMD5(password)
-      }
-    })
-  }
-
+  // Note: These methods are temporarily left as they were so we can rewrite them to use the 
+  // new FALSession logic in your next step.
   async getUserTickets(email: string, password: string): Promise<BoughtTicketInfo[]> {
     return await this.request<BoughtTicketInfo[]>('?action=40', {
       method: 'POST',
