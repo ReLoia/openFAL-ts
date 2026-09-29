@@ -23,53 +23,38 @@ const NEW_API_BASE_URL = 'https://app.ferrovieappulolucane.it/api';
 const ETICKET_API_BASE_URL = 'https://eticket.ferrovieappulolucane.it/b2capp';
 const ETICKET_B2C_BASE_URL = 'https://eticket.ferrovieappulolucane.it/b2c';
 
-function hashMD5(input: string): string {
-  return crypto.createHash('md5').update(input).digest('hex');
-}
+const hashMD5 = (input: string): string => crypto.createHash('md5').update(input).digest('hex');
 
 /**
  * Session Manager to handle individual user sessions concurrently.
  */
 export class FALSession {
   public readonly token: string;
-  public email?: string; // Automatically stored on successful login
+  public email?: string;
+
+  private readonly sessionFetch: typeof ofetch;
 
   constructor(token: string) {
     this.token = token;
+    this.sessionFetch = ofetch.create({ query: { token } });
   }
 
-  /**
-   * Checks if this session token is currently authenticated.
-   */
+  /** Checks if this session token is currently authenticated. */
   async isLoggedIn(): Promise<boolean> {
-    const res = await ofetch<FALSessionTokenCheckResponse>(`${NEW_API_BASE_URL}/sessionTokens/check`, {
-      method: 'GET',
-      query: { token: this.token },
-      responseType: 'json',
-    });
-
+    const res = await this.sessionFetch<FALSessionTokenCheckResponse>(`${NEW_API_BASE_URL}/sessionTokens/check`);
     return res.status === true && res.data?.authenticated === true;
   }
 
-  /**
-   * Logs in a user for this specific session.
-   */
+  /** Logs in a user for this specific session. */
   async login(email: string, password: string): Promise<UserInfo> {
-    const res = await ofetch<FALLoginResponse>(`${ETICKET_API_BASE_URL}//json/utente/login`, {
-      method: 'GET',
-      query: {
-        token: this.token,
-        username: email,
-        password: hashMD5(password)
-      },
-      responseType: 'json'
+    const res = await this.sessionFetch<FALLoginResponse>(`${ETICKET_API_BASE_URL}/json/utente/login`, {
+      query: { username: email, password: hashMD5(password) }
     });
 
     if (res.operationCode !== 0 || !res.utente) {
       throw new Error(res.operationMessage || "Login failed");
     }
 
-    // Store email automatically in session data
     this.email = res.utente.email;
 
     return {
@@ -81,130 +66,72 @@ export class FALSession {
     };
   }
 
-  /**
-   * Generates a payment URL to buy a ticket, doing both "salva" (save to cart)
-   * and "paga" (initiate payment checkout)
-   */
+  /** Generates a payment URL to buy a ticket (saves to cart, then initiates checkout) */
   async getBuyUrl(
     idArticolo: string | number,
     nominativo: string,
-    datanascita: string, // Format: YYYYMMDD
+    datanascita: string,
     codiceFiscale: string = ""
   ): Promise<string> {
-    const payload = JSON.stringify([{
-      idArticolo: String(idArticolo),
-      nominativo,
-      codiceFiscale,
-      datanascita
-    }]);
+    const payload = JSON.stringify([{ idArticolo: String(idArticolo), nominativo, codiceFiscale, datanascita }]);
+    const body = new URLSearchParams({ parameters: payload });
 
-    const formBody = new URLSearchParams({ parameters: payload });
-
-    // 1. Save to cart
-    const saveRes = await ofetch<FALCartResponse>(`${ETICKET_API_BASE_URL}//json/carrello/salva`, {
+    const saveRes = await this.sessionFetch<FALCartResponse>(`${ETICKET_API_BASE_URL}/json/carrello/salva`, {
       method: 'POST',
-      query: { token: this.token },
-      body: formBody,
-      responseType: 'json'
+      body
     });
-
-    if (saveRes.operationCode !== 0) {
-      throw new Error(`Failed to save to cart: ${JSON.stringify(saveRes.errors)}`);
-    }
-
-    // 2. Process cart & get payment URL
-    const payRes = await ofetch<FALCartResponse>(`${ETICKET_API_BASE_URL}//json/carrello/paga`, {
+    if (saveRes.operationCode !== 0) throw new Error(`Failed to save to cart: ${JSON.stringify(saveRes.errors)}`);
+    
+    const payRes = await this.sessionFetch<FALCartResponse>(`${ETICKET_API_BASE_URL}/json/carrello/paga`, {
       method: 'POST',
-      query: { token: this.token },
-      body: formBody,
-      responseType: 'json'
+      body
     });
-
-    if (payRes.operationCode !== 0 || !payRes.urlPayment) {
-      throw new Error(`Failed to generate payment URL: ${JSON.stringify(payRes.errors)}`);
-    }
+    if (payRes.operationCode !== 0 || !payRes.urlPayment) throw new Error(`Failed to generate payment URL: ${JSON.stringify(payRes.errors)}`);
 
     return payRes.urlPayment;
   }
 
-  /**
-   * Retrieves all currently valid purchased tickets for the logged-in user.
-   */
+  /** Retrieves all currently valid purchased tickets for the logged-in user. */
   async getValidTickets(): Promise<FALTicket[]> {
-    const res = await ofetch<FALValidTicketsResponse>(`${NEW_API_BASE_URL}/tickets/valid`, {
-      method: 'GET',
-      query: { token: this.token },
-      responseType: 'json'
-    });
-
+    const res = await this.sessionFetch<FALValidTicketsResponse>(`${NEW_API_BASE_URL}/tickets/valid`);
     return res.data || [];
   }
 }
 
 export class FALClient {
-  private async request<T>(urlArgs: string, options: any = {}): Promise<T> {
-    return ofetch<T>('app_geotourist.php' + urlArgs, {
-      baseURL: BASE_URL,
-      ...options,
-    });
-  }
-
-  /**
-   * Creates a new isolated authentication session.
-   */
+  /** Creates a new isolated authentication session. */
   async createSession(): Promise<FALSession> {
-    const res = await ofetch<FALSessionTokenStoreResponse>(`${NEW_API_BASE_URL}/sessionTokens/store`, {
-      method: 'POST',
-      responseType: 'json'
-    });
-
-    if (!res.status || !res.data?.token) {
-      throw new Error("Failed to initialize session token");
-    }
-
+    const res = await ofetch<FALSessionTokenStoreResponse>(`${NEW_API_BASE_URL}/sessionTokens/store`, { method: 'POST' });
+    if (!res.status || !res.data?.token) throw new Error("Failed to initialize session token");
     return new FALSession(res.data.token);
   }
 
   private enrichRealtimeTrip(raw: RawFALRealtimeTrip): FALRealtimeTrip {
     const stops = raw.stopTimes || [];
     const passedStops = stops.filter(s => s.passed);
-    const lastPassed = passedStops.length > 0 ? passedStops[passedStops.length - 1] : null;
+    const lastPassed = passedStops.at(-1) || null;
 
     return {
       trip_id: raw.trip_id,
       trip_name: raw.trip_name,
       first_stop: stops[0]?.stop_name || '',
-      last_stop: stops[stops.length - 1]?.stop_name || '',
+      last_stop: stops.at(-1)?.stop_name || '',
       is_departed: passedStops.length > 0,
-      current_delay: lastPassed ? lastPassed.delay : (stops[0]?.delay || 0),
-      last_passed_stop: lastPassed ? lastPassed.stop_name : null,
-      current_lat: lastPassed ? lastPassed.lat : null,
-      current_lng: lastPassed ? lastPassed.lng : null,
+      current_delay: lastPassed?.delay ?? (stops[0]?.delay || 0),
+      last_passed_stop: lastPassed?.stop_name ?? null,
+      current_lat: lastPassed?.lat ?? null,
+      current_lng: lastPassed?.lng ?? null,
       stopTimes: stops
     };
   }
 
-  /**
-   * Retrieves all available stations (both buses and trains)
-   * To filter them, check the `services` array in the returned objects
-   * (e.g. `services.includes("T")` for trains or `"B"` for buses).
-   */
+  /** Retrieves all available stations (both buses and trains) */
   async getStations(): Promise<FALStation[]> {
-    const res = await ofetch<FALStationsResponse>(`${NEW_API_BASE_URL}/stations`, {
-      method: 'GET',
-      responseType: 'json'
-    });
+    const res = await ofetch<FALStationsResponse>(`${NEW_API_BASE_URL}/stations`);
     return res.data?.sites || [];
   }
 
-  /**
-   * Get scheduled travel solutions between two stations
-   * @param from Origin station code (e.g., "S02115")
-   * @param to Destination station code (e.g., "S02110")
-   * @param when Date of travel in "YYYY-MM-DD" format
-   * @param time Time of travel in "HH:mm" format (defaults to "00:00")
-   * @param service Transport service type, e.g., "T" for trains (defaults to "T")
-   */
+  /** Get scheduled travel solutions between two stations */
   async getSchedules(
     from: string,
     to: string,
@@ -213,68 +140,45 @@ export class FALClient {
     service: string = "T"
   ): Promise<FALScheduleSolution[]> {
     return ofetch<FALScheduleSolution[]>(`${ETICKET_B2C_BASE_URL}/json/cerca/soluzioni/`, {
-      method: 'GET',
-      query: {
-        from,
-        to,
-        when,
-        time,
-        service
-      },
-      responseType: 'json'
+      query: { from, to, when, time, service }
     });
   }
 
   async getRTTrainTrips(): Promise<FALRealtimeTrip[]> {
-    const res = await ofetch<FALRealtimeResponse>(`${NEW_API_BASE_URL}/realtime/trains`, {
-      method: 'POST',
-      responseType: 'json'
-    });
+    const res = await ofetch<FALRealtimeResponse>(`${NEW_API_BASE_URL}/realtime/trains`, { method: 'POST' });
     return (res.data || []).map(this.enrichRealtimeTrip);
   }
 
   async getRTBusTrips(): Promise<FALRealtimeTrip[]> {
     const res = await ofetch<FALRealtimeResponse>(`${NEW_API_BASE_URL}/realtime/buses`, {
       method: 'POST',
-      responseType: 'json',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'transport=3'
     });
     return (res.data || []).map(this.enrichRealtimeTrip);
   }
 
-  async getRTTrainInfo(trainNumber: string): Promise<FALRealtimeTrip | null> {
-    const trips = await this.getRTTrainTrips();
-    return trips.find(t => t.trip_id === trainNumber || t.trip_name === trainNumber) || null;
-  }
-
-  async getRTBusInfo(busId: string | number): Promise<FALRealtimeTrip | null> {
-    const trips = await this.getRTBusTrips();
-    const targetId = String(busId);
+  private async getRTInfo(fetcher: () => Promise<FALRealtimeTrip[]>, targetId: string): Promise<FALRealtimeTrip | null> {
+    const trips = await fetcher();
     return trips.find(t => t.trip_id === targetId || t.trip_name === targetId) || null;
   }
 
+  async getRTTrainInfo(trainNumber: string): Promise<FALRealtimeTrip | null> {
+    return this.getRTInfo(() => this.getRTTrainTrips(), String(trainNumber));
+  }
+
+  async getRTBusInfo(busId: string | number): Promise<FALRealtimeTrip | null> {
+    return this.getRTInfo(() => this.getRTBusTrips(), String(busId));
+  }
+
   async getWarnings(): Promise<FALWarning[]> {
-      const res = await this.request<string>('?action=52', {
-      method: 'GET',
-      responseType: 'text'
-    });
-
+    const res = await ofetch<string>(`${BASE_URL}app_geotourist.php?action=52`);
     const dom = new JSDOM(res, { contentType: "text/xml" });
-    const items = dom.window.document.querySelectorAll('item');
-    const warnings: FALWarning[] = [];
 
-    items.forEach((item: any) => {
-      const title = item.querySelector('title');
-      const date = item.querySelector('pubDate');
-      const link = item.querySelector('link');
-      if (title) {
-        warnings.push({ title: title.textContent || '', date: date?.textContent || '', link: link?.textContent || '' } );
-      }
-    });
-
-    return warnings;
+    return Array.from(dom.window.document.querySelectorAll('item')).map(item => ({
+      title: item.querySelector('title')?.textContent || '',
+      date: item.querySelector('pubDate')?.textContent || '',
+      link: item.querySelector('link')?.textContent || ''
+    }));
   }
 }

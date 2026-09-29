@@ -1,4 +1,3 @@
-// Updated station interface to match the new API structure
 export interface FALStation {
   codSite: string;
   operators: string[];
@@ -89,7 +88,7 @@ export interface UserInfo {
 
 export interface FALTicketSolution {
   prezzoDaPagare: number;
-  tratte: any[];
+  tratte: unknown[];
   idSoluzione: number;
   prezzo: number;
   durataSecondi: number;
@@ -123,7 +122,7 @@ export interface FALValidTicketsResponse {
 export interface FALCartResponse {
   operationCode: number;
   urlPayment?: string;
-  errors?: any[];
+  errors?: unknown[];
 }
 
 export interface FALSessionTokenStoreResponse {
@@ -151,7 +150,7 @@ export interface FALLoginResponse {
     login: string;
     telefonoFisso: string;
     codiceFiscale: string;
-    tessere: any[];
+    tessere: unknown[];
     cap: string;
     partitaIva: string;
     nazione: string;
