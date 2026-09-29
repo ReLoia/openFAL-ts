@@ -1,131 +1,112 @@
 export interface FALStation {
-    id: number;
-    stazione: number;
-    nome: string;
+  id: number;
+  stazione: number;
+  nome: string;
 }
 
-export interface FALRTBusTrip {
-    id_documento: number;
-    descrizione_documento: string;
-    id_mezzo: number;
-    nome_mezzo: string;
-    tratta: string;
-    expected_start_date: string;
-    expected_end_date: string;
-    start_date: string;
-    end_date: string;
-    State: number;
-    LineCode: string;
+export interface FALRealtimeStopTime {
+  stop_name: string;
+  headsign: string;
+  arrival_time: string;
+  departure_time: string;
+  delay: number;
+  passed: boolean;
+  lat: number;
+  lng: number;
 }
 
-export interface FALRTTrainTrip {
-    numero_treno: string;
-    stazioni: {
-        prima_stazione: string;
-        ultima_stazione: string;
-        partenza_schedulata_corsa: string;
-        arrivoSchedulatoUltimaStazione: string;
-    };
+// The raw format returned by the new API
+export interface RawFALRealtimeTrip {
+  trip_id: string;
+  trip_name: string;
+  stopTimes: FALRealtimeStopTime[];
 }
 
-export interface FALRTTrainTripInfo {
-    numero_treno: string;
-    stazioni: {
-        stazione: number;
-        nome: string;
-        time_partenza_schedulato: string;
-        time_partenza_effettivo: string;
-        time_arrivo_schedulato: string;
-        time_arrivo_effettivo: string;
-        ritardo: number;
-        soppressa: string;
-        partita: boolean;
-        lat: number;
-        lon: number;
-    }[];
+export interface FALRealtimeResponse {
+  status: boolean;
+  data: RawFALRealtimeTrip[];
 }
 
-export interface FALRTBusTripStation {
-    id_fermata: number;
-    nome: string;
-    id_documento: number;
-    id_tipo_fermata: number;
-    descrizione: string;
-    expected_passing_date: string;
-    passing_date: string;
-    entering_date: string | null;
-    leaving_date: string | null;
-    ordine: number;
-    lat: number;
-    lon: number;
-    passata: boolean;
-    ritardo: number;
+// Enriched model to easily access the current status of the trip
+export interface FALRealtimeTrip {
+  trip_id: string;
+  trip_name: string;
+
+  // Enriched summary data (calculated from stopTimes)
+  first_stop: string;
+  last_stop: string;
+  is_departed: boolean;
+  current_delay: number;
+  last_passed_stop: string | null;
+  current_lat: number | null;
+  current_lng: number | null;
+
+  stopTimes: FALRealtimeStopTime[];
 }
 
 export interface FALWarning {
-    title: string;
-    link: string;
-    date: string;
+  title: string;
+  link: string;
+  date: string;
 }
 
 export interface FALScheduleStop {
-    id_tratta: number;
-    id_stazione: number;
-    time_arrivo: string;
-    time_partenza: string | null;
-    ordine: number;
-    facoltativa: string;
-    orario_indicativo: string;
-    note: string;
-    nome: string;
+  id_tratta: number;
+  id_stazione: number;
+  time_arrivo: string;
+  time_partenza: string | null;
+  ordine: number;
+  facoltativa: string;
+  orario_indicativo: string;
+  note: string;
+  nome: string;
 }
 
 export interface FALScheduleTrip {
-    id: number;
-    id_tratta: number;
-    numero: string;
-    time_arrivo: string;
-    time_partenza: string;
-    note: string;
-    fermate: FALScheduleStop[];
+  id: number;
+  id_tratta: number;
+  numero: string;
+  time_arrivo: string;
+  time_partenza: string;
+  note: string;
+  fermate: FALScheduleStop[];
 }
 
 export interface FALScheduleRoute {
-    id_percorso: number;
-    tratte: FALScheduleTrip[];
+  id_percorso: number;
+  tratte: FALScheduleTrip[];
 }
 
 export interface FALScheduleResult {
-    percorsi: FALScheduleRoute[];
+  percorsi: FALScheduleRoute[];
 }
 
 export interface UserInfo {
-    responseCode: number;
-    
-    firstname: string;
-    surname: string;
-    birthdate: string;
+  responseCode: number;
+
+  firstname: string;
+  surname: string;
+  birthdate: string;
 }
 
 export interface BoughtTicketInfo {
-    numTicket: string;
-    numVendita: string;
-    stazioneFermataStart: string;
-    stazioneFermataStop: string;
-    type: string;
-    transport: string;
-    price: number;
-    name: string;
-    birthdate: string;
-    validStart: string;
-    validEnd: string;
-    pnr: string;
-    qrcode: string;
+  numTicket: string;
+  numVendita: string;
+  stazioneFermataStart: string;
+  stazioneFermataStop: string;
+  type: string;
+  transport: string;
+  price: number;
+  name: string;
+  birthdate: string;
+  validStart: string;
+  validEnd: string;
+  pnr: string;
+  qrcode: string;
 }
 
 export interface TicketURLInfo {
-    responseCode: number;
-    
-    numVendita: string;
-    urlPayment: string;
+  responseCode: number;
+  numVendita: string;
+  urlPayment: string;
 }
