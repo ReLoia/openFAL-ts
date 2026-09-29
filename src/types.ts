@@ -103,10 +103,10 @@ export interface BoughtTicketInfo {
   qrcode: string;
 }
 
-export interface TicketURLInfo {
-  responseCode: number;
-  numVendita: string;
-  urlPayment: string;
+export interface FALCartResponse {
+  operationCode: number;
+  urlPayment?: string;
+  errors?: any[];
 }
 
 export interface FALSessionTokenStoreResponse {

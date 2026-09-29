@@ -10,11 +10,11 @@ import {
   FALStation,
   FALStationsResponse,
   FALWarning,
-  TicketURLInfo,
   UserInfo,
   FALSessionTokenStoreResponse,
   FALSessionTokenCheckResponse,
-  FALLoginResponse
+  FALLoginResponse,
+  FALCartResponse
 } from "./types.js";
 
 const BASE_URL = 'https://fal.ferrovieappulolucane.it/';
@@ -31,6 +31,7 @@ function hashMD5(input: string): string {
  */
 export class FALSession {
   public readonly token: string;
+  public email?: string; // Automatically stored on successful login
 
   constructor(token: string) {
     this.token = token;
@@ -67,6 +68,9 @@ export class FALSession {
       throw new Error(res.operationMessage || "Login failed");
     }
 
+    // Store email automatically in session data
+    this.email = res.utente.email;
+
     return {
       responseCode: res.operationCode,
       firstname: res.utente.nome,
@@ -74,6 +78,52 @@ export class FALSession {
       birthdate: res.utente.datanascita,
       email: res.utente.email
     };
+  }
+
+  /**
+   * Generates a payment URL to buy a ticket, doing both "salva" (save to cart)
+   * and "paga" (initiate payment checkout)
+   */
+  async getBuyUrl(
+    idArticolo: string | number,
+    nominativo: string,
+    datanascita: string, // Format: YYYYMMDD
+    codiceFiscale: string = ""
+  ): Promise<string> {
+    const payload = JSON.stringify([{
+      idArticolo: String(idArticolo),
+      nominativo,
+      codiceFiscale,
+      datanascita
+    }]);
+
+    const formBody = new URLSearchParams({ parameters: payload });
+
+    // 1. Save to cart
+    const saveRes = await ofetch<FALCartResponse>(`${ETICKET_API_BASE_URL}//json/carrello/salva`, {
+      method: 'POST',
+      query: { token: this.token },
+      body: formBody,
+      responseType: 'json'
+    });
+
+    if (saveRes.operationCode !== 0) {
+      throw new Error(`Failed to save to cart: ${JSON.stringify(saveRes.errors)}`);
+    }
+
+    // 2. Process cart & get payment URL
+    const payRes = await ofetch<FALCartResponse>(`${ETICKET_API_BASE_URL}//json/carrello/paga`, {
+      method: 'POST',
+      query: { token: this.token },
+      body: formBody,
+      responseType: 'json'
+    });
+
+    if (payRes.operationCode !== 0 || !payRes.urlPayment) {
+      throw new Error(`Failed to generate payment URL: ${JSON.stringify(payRes.errors)}`);
+    }
+
+    return payRes.urlPayment;
   }
 }
 
@@ -221,32 +271,6 @@ export class FALClient {
       body: {
         email,
         password: hashMD5(password)
-      }
-    })
-  }
-
-  async genTicketURL(
-    idstart: string | number,
-    idstop: string | number,
-    date: Date,
-    name: string,
-    birthdate: string,
-    email: string,
-    password: string
-  ): Promise<TicketURLInfo> {
-    return await this.request<TicketURLInfo>('?action=53', {
-      method: 'POST',
-      responseType: 'json',
-      body: {
-        idstart,
-        idstop,
-        date: date.toISOString().split('T')[0].replace(/-/g, ''),
-        name,
-        birthdate,
-        email,
-        password: hashMD5(password),
-        ticket_type: "3",
-        treno_plus_bus: "false"
       }
     })
   }
