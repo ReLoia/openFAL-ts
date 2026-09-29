@@ -87,20 +87,37 @@ export interface UserInfo {
   email: string;
 }
 
-export interface BoughtTicketInfo {
-  numTicket: string;
-  numVendita: string;
-  stazioneFermataStart: string;
-  stazioneFermataStop: string;
-  type: string;
-  transport: string;
-  price: number;
-  name: string;
-  birthdate: string;
-  validStart: string;
-  validEnd: string;
-  pnr: string;
+export interface FALTicketSolution {
+  prezzoDaPagare: number;
+  tratte: any[];
+  idSoluzione: number;
+  prezzo: number;
+  durataSecondi: number;
+}
+
+export interface FALTicket {
+  arrivo: string;
+  soluzione: FALTicketSolution;
+  timeInizioValidita: string;
   qrcode: string;
+  numVendita: string;
+  timeEmissione: string;
+  timeFineValidita: string;
+  tariffa: string;
+  timeInizioViaggio: string;
+  nominativo: string;
+  pnr: string;
+  numTicket: string;
+  prezzo: number;
+  partenza: string;
+  timeFineViaggio: string;
+  datanascita: string;
+  prodotto: string;
+}
+
+export interface FALValidTicketsResponse {
+  status: boolean;
+  data: FALTicket[];
 }
 
 export interface FALCartResponse {

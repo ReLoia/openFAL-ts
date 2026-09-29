@@ -2,7 +2,6 @@ import { ofetch } from "ofetch";
 import { JSDOM } from "jsdom";
 import crypto from "crypto";
 import {
-  BoughtTicketInfo,
   FALRealtimeTrip,
   FALRealtimeResponse,
   RawFALRealtimeTrip,
@@ -14,7 +13,9 @@ import {
   FALSessionTokenStoreResponse,
   FALSessionTokenCheckResponse,
   FALLoginResponse,
-  FALCartResponse
+  FALCartResponse,
+  FALTicket,
+  FALValidTicketsResponse
 } from "./types.js";
 
 const BASE_URL = 'https://fal.ferrovieappulolucane.it/';
@@ -124,6 +125,19 @@ export class FALSession {
     }
 
     return payRes.urlPayment;
+  }
+
+  /**
+   * Retrieves all currently valid purchased tickets for the logged-in user.
+   */
+  async getValidTickets(): Promise<FALTicket[]> {
+    const res = await ofetch<FALValidTicketsResponse>(`${NEW_API_BASE_URL}/tickets/valid`, {
+      method: 'GET',
+      query: { token: this.token },
+      responseType: 'json'
+    });
+
+    return res.data || [];
   }
 }
 
@@ -243,7 +257,7 @@ export class FALClient {
   }
 
   async getWarnings(): Promise<FALWarning[]> {
-    const res = await this.request<string>('?action=52', {
+      const res = await this.request<string>('?action=52', {
       method: 'GET',
       responseType: 'text'
     });
@@ -262,16 +276,5 @@ export class FALClient {
     });
 
     return warnings;
-  }
-
-  async getUserTickets(email: string, password: string): Promise<BoughtTicketInfo[]> {
-    return await this.request<BoughtTicketInfo[]>('?action=40', {
-      method: 'POST',
-      responseType: 'json',
-      body: {
-        email,
-        password: hashMD5(password)
-      }
-    })
   }
 }
