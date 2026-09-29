@@ -1,7 +1,22 @@
+// Updated station interface to match the new API structure
 export interface FALStation {
-  id: number;
-  stazione: number;
-  nome: string;
+  codSite: string;
+  operators: string[];
+  name: string;
+  lon: number;
+  lat: number;
+  services: string[]; // e.g. ["T"] for trains, ["B"] for buses
+}
+
+export interface FALStationsResponse {
+  status: boolean;
+  data: {
+    operationCode: number;
+    operationMessage: string;
+    sites: FALStation[];
+    processTime: number;
+    elapsedTime: number;
+  }
 }
 
 export interface FALRealtimeStopTime {
@@ -76,7 +91,6 @@ export interface FALScheduleResult {
   percorsi: FALScheduleRoute[];
 }
 
-// Updated UserInfo to map with the new login response
 export interface UserInfo {
   responseCode: number;
   firstname: string;
@@ -106,8 +120,6 @@ export interface TicketURLInfo {
   numVendita: string;
   urlPayment: string;
 }
-
-// --- NEW AUTHENTICATION TYPES ---
 
 export interface FALSessionTokenStoreResponse {
   status: boolean;

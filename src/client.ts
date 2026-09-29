@@ -8,6 +8,7 @@ import {
   RawFALRealtimeTrip,
   FALScheduleResult,
   FALStation,
+  FALStationsResponse,
   FALWarning,
   TicketURLInfo,
   UserInfo,
@@ -118,18 +119,17 @@ export class FALClient {
     };
   }
 
-  async getTrainStations(): Promise<FALStation[]> {
-    return this.request<FALStation[]>('?action=22&isTreno=true', {
+  /**
+   * Retrieves all available stations (both buses and trains)
+   * To filter them, check the `services` array in the returned objects
+   * (e.g. `services.includes("T")` for trains or `"B"` for buses).
+   */
+  async getStations(): Promise<FALStation[]> {
+    const res = await ofetch<FALStationsResponse>(`${NEW_API_BASE_URL}/stations`, {
       method: 'GET',
       responseType: 'json'
     });
-  }
-
-  async getBusStations(): Promise<FALStation[]> {
-    return this.request<FALStation[]>('?action=22&isTreno=false', {
-      method: 'GET',
-      responseType: 'json'
-    });
+    return res.data?.sites || [];
   }
 
   async getSchedules(from: string | number, to: string | number, date: Date): Promise<FALScheduleResult> {
@@ -193,8 +193,6 @@ export class FALClient {
     return warnings;
   }
 
-  // Note: These methods are temporarily left as they were so we can rewrite them to use the 
-  // new FALSession logic in your next step.
   async getUserTickets(email: string, password: string): Promise<BoughtTicketInfo[]> {
     return await this.request<BoughtTicketInfo[]>('?action=40', {
       method: 'POST',
