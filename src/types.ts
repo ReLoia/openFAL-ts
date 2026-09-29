@@ -60,35 +60,23 @@ export interface FALWarning {
   date: string;
 }
 
-export interface FALScheduleStop {
-  id_tratta: number;
-  id_stazione: number;
-  time_arrivo: string;
-  time_partenza: string | null;
-  ordine: number;
-  facoltativa: string;
-  orario_indicativo: string;
-  note: string;
-  nome: string;
-}
-
-export interface FALScheduleTrip {
-  id: number;
-  id_tratta: number;
-  numero: string;
-  time_arrivo: string;
-  time_partenza: string;
-  note: string;
-  fermate: FALScheduleStop[];
-}
-
-export interface FALScheduleRoute {
-  id_percorso: number;
-  tratte: FALScheduleTrip[];
-}
-
-export interface FALScheduleResult {
-  percorsi: FALScheduleRoute[];
+export interface FALScheduleSolution {
+  timeA: string;
+  conBus: boolean;
+  gestori: number;
+  tratte: number;
+  nomeA: string;
+  durataSecondi: number;
+  conServizioSostitutivo: boolean;
+  tipologiaServizio: number;
+  descrizione: string;
+  elencoCorse: string[];
+  conTreno: boolean;
+  nomeP: string;
+  cambi: number;
+  timeP: string;
+  idSoluzione: number;
+  prezzo: number;
 }
 
 export interface UserInfo {

@@ -6,7 +6,7 @@ import {
   FALRealtimeTrip,
   FALRealtimeResponse,
   RawFALRealtimeTrip,
-  FALScheduleResult,
+  FALScheduleSolution,
   FALStation,
   FALStationsResponse,
   FALWarning,
@@ -20,6 +20,7 @@ import {
 const BASE_URL = 'https://fal.ferrovieappulolucane.it/';
 const NEW_API_BASE_URL = 'https://app.ferrovieappulolucane.it/api';
 const ETICKET_API_BASE_URL = 'https://eticket.ferrovieappulolucane.it/b2capp';
+const ETICKET_B2C_BASE_URL = 'https://eticket.ferrovieappulolucane.it/b2c';
 
 function hashMD5(input: string): string {
   return crypto.createHash('md5').update(input).digest('hex');
@@ -132,10 +133,30 @@ export class FALClient {
     return res.data?.sites || [];
   }
 
-  async getSchedules(from: string | number, to: string | number, date: Date): Promise<FALScheduleResult> {
-    const dateStr = date.toISOString().split('T')[0].replace(/-/g, '');
-    return this.request<FALScheduleResult>(`?action=21&idstart=${from}&idstop=${to}&date=${dateStr}&isSingleTicket=true`, {
+  /**
+   * Get scheduled travel solutions between two stations
+   * @param from Origin station code (e.g., "S02115")
+   * @param to Destination station code (e.g., "S02110")
+   * @param when Date of travel in "YYYY-MM-DD" format
+   * @param time Time of travel in "HH:mm" format (defaults to "00:00")
+   * @param service Transport service type, e.g., "T" for trains (defaults to "T")
+   */
+  async getSchedules(
+    from: string,
+    to: string,
+    when: string,
+    time: string = "00:00",
+    service: string = "T"
+  ): Promise<FALScheduleSolution[]> {
+    return ofetch<FALScheduleSolution[]>(`${ETICKET_B2C_BASE_URL}/json/cerca/soluzioni/`, {
       method: 'GET',
+      query: {
+        from,
+        to,
+        when,
+        time,
+        service
+      },
       responseType: 'json'
     });
   }
