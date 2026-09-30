@@ -121,8 +121,14 @@ export interface FALValidTicketsResponse {
 
 export interface FALCartResponse {
   operationCode: number;
-  urlPayment?: string;
-  errors?: unknown[];
+  carrello: { articoli: { idArticolo: string }[] };
+  errors: unknown
+}
+
+export interface FALPayResponse {
+  operationCode: number;
+  urlPayment: string;
+  errors: unknown
 }
 
 export interface FALSessionTokenStoreResponse {

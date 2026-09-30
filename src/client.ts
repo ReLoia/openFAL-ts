@@ -1,5 +1,4 @@
-import { ofetch } from "ofetch";
-import { JSDOM } from "jsdom";
+import { ofetch, $Fetch } from "ofetch";
 import crypto from "crypto";
 import {
   FALRealtimeTrip,
@@ -8,44 +7,46 @@ import {
   FALScheduleSolution,
   FALStation,
   FALStationsResponse,
-  FALWarning,
   UserInfo,
   FALSessionTokenStoreResponse,
   FALSessionTokenCheckResponse,
   FALLoginResponse,
   FALCartResponse,
   FALTicket,
-  FALValidTicketsResponse
+  FALValidTicketsResponse,
+  FALPayResponse
 } from "./types.js";
+import { ProxyAgent } from "undici";
 
-const BASE_URL = 'https://fal.ferrovieappulolucane.it/';
 const NEW_API_BASE_URL = 'https://app.ferrovieappulolucane.it/api';
 const ETICKET_API_BASE_URL = 'https://eticket.ferrovieappulolucane.it/b2capp';
 const ETICKET_B2C_BASE_URL = 'https://eticket.ferrovieappulolucane.it/b2c';
 
 const hashMD5 = (input: string): string => crypto.createHash('md5').update(input).digest('hex');
 
-/**
- * Session Manager to handle individual user sessions concurrently.
- */
 export class FALSession {
   public readonly token: string;
   public email?: string;
+  private readonly sessionFetch: $Fetch;
 
-  private readonly sessionFetch: typeof ofetch;
-
-  constructor(token: string) {
+  constructor(token: string, baseFetch: $Fetch) {
     this.token = token;
-    this.sessionFetch = ofetch.create({ query: { token } });
+    this.sessionFetch = baseFetch.create({
+      query: { token },
+      dispatcher: new ProxyAgent('http://localhost:8002')
+    });
   }
 
-  /** Checks if this session token is currently authenticated. */
   async isLoggedIn(): Promise<boolean> {
-    const res = await this.sessionFetch<FALSessionTokenCheckResponse>(`${NEW_API_BASE_URL}/sessionTokens/check`);
-    return res.status === true && res.data?.authenticated === true;
+    try {
+      const res = await this.sessionFetch<FALSessionTokenCheckResponse>(`${NEW_API_BASE_URL}/sessionTokens/check`);
+      return res.status === true && res.data?.authenticated === true;
+    } catch (error: any) {
+      if (error.response?.status === 401) return false;
+      throw error;
+    }
   }
 
-  /** Logs in a user for this specific session. */
   async login(email: string, password: string): Promise<UserInfo> {
     const res = await this.sessionFetch<FALLoginResponse>(`${ETICKET_API_BASE_URL}/json/utente/login`, {
       query: { username: email, password: hashMD5(password) }
@@ -66,32 +67,47 @@ export class FALSession {
     };
   }
 
-  /** Generates a payment URL to buy a ticket (saves to cart, then initiates checkout) */
   async getBuyUrl(
-    idArticolo: string | number,
+    idArticolo: string,
     nominativo: string,
     datanascita: string,
     codiceFiscale: string = ""
   ): Promise<string> {
-    const payload = JSON.stringify([{ idArticolo: String(idArticolo), nominativo, codiceFiscale, datanascita }]);
+    const addSol = await this.sessionFetch<FALCartResponse>(`${ETICKET_API_BASE_URL}/json/carrello/aggiungiSoluzione`, {
+      method: 'POST',
+      body: new URLSearchParams({ idSoluzione: idArticolo, qta: "1" })
+    });
+
+    if (addSol.operationCode !== 0) {
+      throw new Error(`Failed to add to cart: ${JSON.stringify(addSol.errors)}`);
+    }
+
+    await this.sessionFetch(`${ETICKET_API_BASE_URL}/json/carrello/conta`);
+
+    const vedi = await this.sessionFetch<FALCartResponse>(`${ETICKET_API_BASE_URL}/json/carrello/vedi`);
+
+    const payload = JSON.stringify([{ idArticolo: String(vedi.carrello.articoli[0].idArticolo), nominativo, codiceFiscale, datanascita }]);
     const body = new URLSearchParams({ parameters: payload });
 
-    const saveRes = await this.sessionFetch<FALCartResponse>(`${ETICKET_API_BASE_URL}/json/carrello/salva`, {
-      method: 'POST',
-      body
-    });
-    if (saveRes.operationCode !== 0) throw new Error(`Failed to save to cart: ${JSON.stringify(saveRes.errors)}`);
-    
-    const payRes = await this.sessionFetch<FALCartResponse>(`${ETICKET_API_BASE_URL}/json/carrello/paga`, {
-      method: 'POST',
-      body
-    });
-    if (payRes.operationCode !== 0 || !payRes.urlPayment) throw new Error(`Failed to generate payment URL: ${JSON.stringify(payRes.errors)}`);
+    await this.sessionFetch(`${ETICKET_API_BASE_URL}/json/carrello/salva`, { method: 'POST', body });
+    await this.sessionFetch(`${ETICKET_API_BASE_URL}/json/carrello/conta`);
 
-    return payRes.urlPayment;
+    try {
+      const payRes = await this.sessionFetch<FALPayResponse>(`${ETICKET_API_BASE_URL}/json/carrello/paga`, {
+        method: 'POST',
+        body
+      });
+
+      if (payRes.operationCode !== 0 || !payRes.urlPayment) {
+        throw new Error(`Failed to generate payment URL: ${JSON.stringify(payRes.errors)}`);
+      }
+
+      return payRes.urlPayment;
+    } catch (e: any) {
+      throw new Error("Payment endpoint failed or is down.");
+    }
   }
 
-  /** Retrieves all currently valid purchased tickets for the logged-in user. */
   async getValidTickets(): Promise<FALTicket[]> {
     const res = await this.sessionFetch<FALValidTicketsResponse>(`${NEW_API_BASE_URL}/tickets/valid`);
     return res.data || [];
@@ -99,25 +115,27 @@ export class FALSession {
 }
 
 export class FALClient {
-  /** Creates a new isolated authentication session. */
+  private readonly baseFetch: $Fetch = ofetch;
+
   async createSession(): Promise<FALSession> {
-    const res = await ofetch<FALSessionTokenStoreResponse>(`${NEW_API_BASE_URL}/sessionTokens/store`, { method: 'POST' });
+    const res = await this.baseFetch<FALSessionTokenStoreResponse>(`${NEW_API_BASE_URL}/sessionTokens/store`, { method: 'POST' });
     if (!res.status || !res.data?.token) throw new Error("Failed to initialize session token");
-    return new FALSession(res.data.token);
+    return new FALSession(res.data.token, this.baseFetch);
   }
 
   private enrichRealtimeTrip(raw: RawFALRealtimeTrip): FALRealtimeTrip {
     const stops = raw.stopTimes || [];
     const passedStops = stops.filter(s => s.passed);
     const lastPassed = passedStops.at(-1) || null;
+    const firstStop = stops[0];
 
     return {
       trip_id: raw.trip_id,
       trip_name: raw.trip_name,
-      first_stop: stops[0]?.stop_name || '',
+      first_stop: firstStop?.stop_name || '',
       last_stop: stops.at(-1)?.stop_name || '',
       is_departed: passedStops.length > 0,
-      current_delay: lastPassed?.delay ?? (stops[0]?.delay || 0),
+      current_delay: lastPassed?.delay ?? (firstStop?.delay || 0),
       last_passed_stop: lastPassed?.stop_name ?? null,
       current_lat: lastPassed?.lat ?? null,
       current_lng: lastPassed?.lng ?? null,
@@ -125,13 +143,11 @@ export class FALClient {
     };
   }
 
-  /** Retrieves all available stations (both buses and trains) */
   async getStations(): Promise<FALStation[]> {
-    const res = await ofetch<FALStationsResponse>(`${NEW_API_BASE_URL}/stations`);
+    const res = await this.baseFetch<FALStationsResponse>(`${NEW_API_BASE_URL}/stations`);
     return res.data?.sites || [];
   }
 
-  /** Get scheduled travel solutions between two stations */
   async getSchedules(
     from: string,
     to: string,
@@ -139,46 +155,53 @@ export class FALClient {
     time: string = "00:00",
     service: string = "T"
   ): Promise<FALScheduleSolution[]> {
-    return ofetch<FALScheduleSolution[]>(`${ETICKET_B2C_BASE_URL}/json/cerca/soluzioni/`, {
+    return this.baseFetch<FALScheduleSolution[]>(`${ETICKET_B2C_BASE_URL}/json/cerca/soluzioni/`, {
       query: { from, to, when, time, service }
     });
   }
 
+  private async getRawRealtimeTrips(type: 'trains' | 'buses'): Promise<RawFALRealtimeTrip[]> {
+    const res = await this.baseFetch<FALRealtimeResponse>(`${NEW_API_BASE_URL}/realtime/${type}`, { method: 'POST' });
+    return res.data || [];
+  }
+
   async getRTTrainTrips(): Promise<FALRealtimeTrip[]> {
-    const res = await ofetch<FALRealtimeResponse>(`${NEW_API_BASE_URL}/realtime/trains`, { method: 'POST' });
-    return (res.data || []).map(this.enrichRealtimeTrip);
+    const raw = await this.getRawRealtimeTrips('trains');
+    return raw.map(t => this.enrichRealtimeTrip(t));
   }
 
   async getRTBusTrips(): Promise<FALRealtimeTrip[]> {
-    const res = await ofetch<FALRealtimeResponse>(`${NEW_API_BASE_URL}/realtime/buses`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'transport=3'
-    });
-    return (res.data || []).map(this.enrichRealtimeTrip);
+    const raw = await this.getRawRealtimeTrips('buses');
+    return raw.map(t => this.enrichRealtimeTrip(t));
   }
 
-  private async getRTInfo(fetcher: () => Promise<FALRealtimeTrip[]>, targetId: string): Promise<FALRealtimeTrip | null> {
-    const trips = await fetcher();
-    return trips.find(t => t.trip_id === targetId || t.trip_name === targetId) || null;
+  private async getRTInfo(type: 'trains' | 'buses', targetId: string): Promise<FALRealtimeTrip | null> {
+    const rawTrips = await this.getRawRealtimeTrips(type);
+    const target = rawTrips.find(t => t.trip_id === targetId || t.trip_name === targetId);
+    return target ? this.enrichRealtimeTrip(target) : null;
   }
 
-  async getRTTrainInfo(trainNumber: string): Promise<FALRealtimeTrip | null> {
-    return this.getRTInfo(() => this.getRTTrainTrips(), String(trainNumber));
+  async getRTTrainInfo(trainNumber: string | number): Promise<FALRealtimeTrip | null> {
+    return this.getRTInfo('trains', String(trainNumber));
   }
 
   async getRTBusInfo(busId: string | number): Promise<FALRealtimeTrip | null> {
-    return this.getRTInfo(() => this.getRTBusTrips(), String(busId));
+    return this.getRTInfo('buses', String(busId));
   }
 
-  async getWarnings(): Promise<FALWarning[]> {
-    const res = await ofetch<string>(`${BASE_URL}app_geotourist.php?action=52`);
-    const dom = new JSDOM(res, { contentType: "text/xml" });
+  async getWarnings(limit: number = 5, offset: number = 0, language: string = "en"): Promise<any[]> {
+    const res = await this.baseFetch<any>(`${NEW_API_BASE_URL}/news`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        language,
+        limit: String(limit),
+        offset: String(offset)
+      })
+    });
 
-    return Array.from(dom.window.document.querySelectorAll('item')).map(item => ({
-      title: item.querySelector('title')?.textContent || '',
-      date: item.querySelector('pubDate')?.textContent || '',
-      link: item.querySelector('link')?.textContent || ''
-    }));
+    return res.data || [];
   }
 }
