@@ -16,7 +16,6 @@ import {
   FALValidTicketsResponse,
   FALPayResponse
 } from "./types.js";
-import { ProxyAgent } from "undici";
 
 const NEW_API_BASE_URL = 'https://app.ferrovieappulolucane.it/api';
 const ETICKET_API_BASE_URL = 'https://eticket.ferrovieappulolucane.it/b2capp';
@@ -32,8 +31,7 @@ export class FALSession {
   constructor(token: string, baseFetch: $Fetch) {
     this.token = token;
     this.sessionFetch = baseFetch.create({
-      query: { token },
-      dispatcher: new ProxyAgent('http://localhost:8002')
+      query: { token }
     });
   }
 
