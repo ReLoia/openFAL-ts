@@ -33,6 +33,12 @@ export class FALSession {
     this.sessionFetch = baseFetch.create({
       query: { token }
     });
+
+    // Attempt to load the login info (this.email) automatically 
+    // from the token if it already holds an active session.
+    this.login().catch(() => {
+      // Silently ignore if the token is not authenticated yet.
+    });
   }
 
   async isLoggedIn(): Promise<boolean> {
@@ -45,9 +51,18 @@ export class FALSession {
     }
   }
 
-  async login(email: string, password: string): Promise<UserInfo> {
+  async login(email?: string, password?: string): Promise<UserInfo> {
+    const query: Record<string, string> = {};
+
+    // If credentials are provided, pass them to authenticate. 
+    // Otherwise, we rely on the token (automatically injected by sessionFetch).
+    if (email && password) {
+      query.username = email;
+      query.password = hashMD5(password);
+    }
+
     const res = await this.sessionFetch<FALLoginResponse>(`${ETICKET_API_BASE_URL}/json/utente/login`, {
-      query: { username: email, password: hashMD5(password) }
+      query
     });
 
     if (res.operationCode !== 0 || !res.utente) {
@@ -115,7 +130,13 @@ export class FALSession {
 export class FALClient {
   private readonly baseFetch: $Fetch = ofetch;
 
-  async createSession(): Promise<FALSession> {
+  async createSession(token?: string): Promise<FALSession> {
+    // If a token is provided, directly create and return the session
+    if (token) {
+      return new FALSession(token, this.baseFetch);
+    }
+
+    // Otherwise, generate a new token
     const res = await this.baseFetch<FALSessionTokenStoreResponse>(`${NEW_API_BASE_URL}/sessionTokens/store`, { method: 'POST' });
     if (!res.status || !res.data?.token) throw new Error("Failed to initialize session token");
     return new FALSession(res.data.token, this.baseFetch);
