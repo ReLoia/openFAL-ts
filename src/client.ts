@@ -14,7 +14,8 @@ import {
   FALCartResponse,
   FALTicket,
   FALValidTicketsResponse,
-  FALPayResponse
+  FALPayResponse,
+  FALScheduleSolutionDetail
 } from "./types.js";
 
 const NEW_API_BASE_URL = 'https://app.ferrovieappulolucane.it/api';
@@ -78,6 +79,10 @@ export class FALSession {
       birthdate: res.utente.datanascita,
       email: res.utente.email
     };
+  }
+
+  async getScheduleInfo(solutionId: string | number): Promise<FALScheduleSolutionDetail> {
+    return this.sessionFetch<FALScheduleSolutionDetail>(`${ETICKET_API_BASE_URL}/json/soluzioni/id/${solutionId}`);
   }
 
   async getBuyUrl(

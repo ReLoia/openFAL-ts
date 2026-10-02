@@ -169,3 +169,52 @@ export interface FALLoginResponse {
   processTime: number;
   elapsedTime: number;
 }
+
+export interface FALSite {
+  servizi: string[];
+  gestori: string[];
+  codSito: string;
+  nome: string;
+  lon: number;
+  lat: number;
+}
+
+export interface FALStop {
+  ordine: number;
+  sito: FALSite;
+  timePartenza?: string;
+  timeArrivo?: string;
+  orarioIndicativo: string;
+  facoltativa: string;
+}
+
+export interface FALTratta {
+  sitoArrivo: FALSite;
+  sitoPartenza: FALSite;
+  note: string;
+  numero: string;
+  codTratta: string;
+  gestore: string;
+  fermate: FALStop[];
+  timePartenza: string;
+  timeArrivo: string;
+  servizio: string;
+  noteOriginale: string;
+}
+
+export interface FALScheduleSolutionDetail {
+  idSoluzione: number;
+  timeP: string;
+  timeA: string;
+  validitaInizio: string;
+  validitaFine: string;
+  tratte: FALTratta[];
+  descrizioneOriginale: string;
+  descrizioneStampa: string;
+  durataSecondi: number;
+  tariffa: string;
+  prezzoDaPagare: number;
+  descrizione: string;
+  descrizioneTariffa: string;
+  prezzo: number;
+}
