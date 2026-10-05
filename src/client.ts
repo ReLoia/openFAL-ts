@@ -18,27 +18,19 @@ import {
   FALScheduleSolutionDetail
 } from "./types.js";
 
-const NEW_API_BASE_URL = 'https://app.ferrovieappulolucane.it/api';
-const ETICKET_API_BASE_URL = 'https://eticket.ferrovieappulolucane.it/b2capp';
-const ETICKET_B2C_BASE_URL = 'https://eticket.ferrovieappulolucane.it/b2c';
+const NEW_API_BASE_URL = "https://app.ferrovieappulolucane.it/api";
+const ETICKET_API_BASE_URL = "https://eticket.ferrovieappulolucane.it/b2capp";
+const ETICKET_B2C_BASE_URL = "https://eticket.ferrovieappulolucane.it/b2c";
 
-const hashMD5 = (input: string): string => crypto.createHash('md5').update(input).digest('hex');
+const hashMD5 = (input: string): string => crypto.createHash("md5").update(input).digest("hex");
 
 export class FALSession {
-  public readonly token: string;
   public email?: string;
-  private readonly sessionFetch: $Fetch;
+  public readonly sessionFetch: $Fetch;
 
-  constructor(token: string, baseFetch: $Fetch) {
-    this.token = token;
-    this.sessionFetch = baseFetch.create({
-      query: { token }
-    });
-
-    // Attempt to load the login info (this.email) automatically 
-    // from the token if it already holds an active session.
+  constructor(public readonly token: string, baseFetch: $Fetch) {
+    this.sessionFetch = baseFetch.create({ query: { token } });
     this.login().catch(() => {
-      // Silently ignore if the token is not authenticated yet.
     });
   }
 
@@ -53,36 +45,24 @@ export class FALSession {
   }
 
   async login(email?: string, password?: string): Promise<UserInfo> {
-    const query: Record<string, string> = {};
+    const query = email && password ? { username: email, password: hashMD5(password) } : {};
 
-    // If credentials are provided, pass them to authenticate. 
-    // Otherwise, we rely on the token (automatically injected by sessionFetch).
-    if (email && password) {
-      query.username = email;
-      query.password = hashMD5(password);
-    }
-
-    const res = await this.sessionFetch<FALLoginResponse>(`${ETICKET_API_BASE_URL}/json/utente/login`, {
-      query
-    });
+    const res = await this.sessionFetch<FALLoginResponse>(`${ETICKET_API_BASE_URL}/json/utente/login`, { query });
 
     if (res.operationCode !== 0 || !res.utente) {
       throw new Error(res.operationMessage || "Login failed");
     }
 
-    this.email = res.utente.email;
+    const u = res.utente;
+    this.email = u.email;
 
     return {
       responseCode: res.operationCode,
-      firstname: res.utente.nome,
-      surname: res.utente.cognome,
-      birthdate: res.utente.datanascita,
-      email: res.utente.email
+      firstname: u.nome,
+      surname: u.cognome,
+      birthdate: u.datanascita,
+      email: u.email
     };
-  }
-
-  async getScheduleInfo(solutionId: string | number): Promise<FALScheduleSolutionDetail> {
-    return this.sessionFetch<FALScheduleSolutionDetail>(`${ETICKET_API_BASE_URL}/json/soluzioni/id/${solutionId}`);
   }
 
   async getBuyUrl(
@@ -91,39 +71,45 @@ export class FALSession {
     datanascita: string,
     codiceFiscale: string = ""
   ): Promise<string> {
-    const addSol = await this.sessionFetch<FALCartResponse>(`${ETICKET_API_BASE_URL}/json/carrello/aggiungiSoluzione`, {
-      method: 'POST',
+    const cart = (path: string, options?: object) =>
+      this.sessionFetch<any>(`${ETICKET_API_BASE_URL}/json/carrello/${path}`, options);
+
+    const addSol = await cart("aggiungiSoluzione", {
+      method: "POST",
       body: new URLSearchParams({ idSoluzione: idArticolo, qta: "1" })
-    });
+    }) as FALCartResponse;
 
     if (addSol.operationCode !== 0) {
       throw new Error(`Failed to add to cart: ${JSON.stringify(addSol.errors)}`);
     }
 
-    await this.sessionFetch(`${ETICKET_API_BASE_URL}/json/carrello/conta`);
+    await cart("conta");
 
-    const vedi = await this.sessionFetch<FALCartResponse>(`${ETICKET_API_BASE_URL}/json/carrello/vedi`);
+    const vedi = await cart("vedi") as FALCartResponse;
+    const body = new URLSearchParams({
+      parameters: JSON.stringify([{
+        idArticolo: String(vedi.carrello.articoli[0].idArticolo),
+        nominativo,
+        codiceFiscale,
+        datanascita
+      }])
+    });
 
-    const payload = JSON.stringify([{ idArticolo: String(vedi.carrello.articoli[0].idArticolo), nominativo, codiceFiscale, datanascita }]);
-    const body = new URLSearchParams({ parameters: payload });
+    await cart("salva", { method: "POST", body });
+    await cart("conta");
 
-    await this.sessionFetch(`${ETICKET_API_BASE_URL}/json/carrello/salva`, { method: 'POST', body });
-    await this.sessionFetch(`${ETICKET_API_BASE_URL}/json/carrello/conta`);
-
+    let payRes: FALPayResponse;
     try {
-      const payRes = await this.sessionFetch<FALPayResponse>(`${ETICKET_API_BASE_URL}/json/carrello/paga`, {
-        method: 'POST',
-        body
-      });
-
-      if (payRes.operationCode !== 0 || !payRes.urlPayment) {
-        throw new Error(`Failed to generate payment URL: ${JSON.stringify(payRes.errors)}`);
-      }
-
-      return payRes.urlPayment;
-    } catch (e: any) {
+      payRes = await cart("paga", { method: "POST", body });
+    } catch {
       throw new Error("Payment endpoint failed or is down.");
     }
+
+    if (payRes.operationCode !== 0 || !payRes.urlPayment) {
+      throw new Error(`Failed to generate payment URL: ${JSON.stringify(payRes.errors)}`);
+    }
+
+    return payRes.urlPayment;
   }
 
   async getValidTickets(): Promise<FALTicket[]> {
@@ -136,30 +122,26 @@ export class FALClient {
   private readonly baseFetch: $Fetch = ofetch;
 
   async createSession(token?: string): Promise<FALSession> {
-    // If a token is provided, directly create and return the session
-    if (token) {
-      return new FALSession(token, this.baseFetch);
-    }
+    if (token) return new FALSession(token, this.baseFetch);
 
-    // Otherwise, generate a new token
-    const res = await this.baseFetch<FALSessionTokenStoreResponse>(`${NEW_API_BASE_URL}/sessionTokens/store`, { method: 'POST' });
+    const res = await this.baseFetch<FALSessionTokenStoreResponse>(`${NEW_API_BASE_URL}/sessionTokens/store`, { method: "POST" });
     if (!res.status || !res.data?.token) throw new Error("Failed to initialize session token");
     return new FALSession(res.data.token, this.baseFetch);
   }
 
   private enrichRealtimeTrip(raw: RawFALRealtimeTrip): FALRealtimeTrip {
     const stops = raw.stopTimes || [];
-    const passedStops = stops.filter(s => s.passed);
-    const lastPassed = passedStops.at(-1) || null;
-    const firstStop = stops[0];
+    const passed = stops.filter(s => s.passed);
+    const lastPassed = passed.at(-1) ?? null;
+    const first = stops[0];
 
     return {
       trip_id: raw.trip_id,
       trip_name: raw.trip_name,
-      first_stop: firstStop?.stop_name || '',
-      last_stop: stops.at(-1)?.stop_name || '',
-      is_departed: passedStops.length > 0,
-      current_delay: lastPassed?.delay ?? (firstStop?.delay || 0),
+      first_stop: first?.stop_name || "",
+      last_stop: stops.at(-1)?.stop_name || "",
+      is_departed: passed.length > 0,
+      current_delay: lastPassed?.delay ?? (first?.delay || 0),
       last_passed_stop: lastPassed?.stop_name ?? null,
       current_lat: lastPassed?.lat ?? null,
       current_lng: lastPassed?.lng ?? null,
@@ -178,52 +160,44 @@ export class FALClient {
     when: string,
     time: string = "00:00",
     service: string = "T"
-  ): Promise<FALScheduleSolution[]> {
-    return this.baseFetch<FALScheduleSolution[]>(`${ETICKET_B2C_BASE_URL}/json/cerca/soluzioni/`, {
-      query: { from, to, when, time, service }
-    });
+  ): Promise<{ result: FALScheduleSolution[]; session: string }> {
+    const session = await this.createSession();
+
+    const result = await session.sessionFetch<FALScheduleSolution[]>(
+      `${ETICKET_B2C_BASE_URL}/json/cerca/soluzioni/`,
+      { query: { from, to, when, time, service } }
+    );
+
+    return { result, session: session.token };
   }
 
-  private async getRawRealtimeTrips(type: 'trains' | 'buses'): Promise<RawFALRealtimeTrip[]> {
-    const res = await this.baseFetch<FALRealtimeResponse>(`${NEW_API_BASE_URL}/realtime/${type}`, { method: 'POST' });
-    return res.data || [];
+  async getScheduleInfo(solutionId: string | number, session: string): Promise<FALScheduleSolutionDetail> {
+    return this.baseFetch<FALScheduleSolutionDetail>(
+      `${ETICKET_B2C_BASE_URL}/json/soluzioni/id/${solutionId}`,
+      { query: { token: session } }
+    );
   }
 
-  async getRTTrainTrips(): Promise<FALRealtimeTrip[]> {
-    const raw = await this.getRawRealtimeTrips('trains');
-    return raw.map(t => this.enrichRealtimeTrip(t));
+  private async getRTTrips(type: "trains" | "buses"): Promise<FALRealtimeTrip[]> {
+    const res = await this.baseFetch<FALRealtimeResponse>(`${NEW_API_BASE_URL}/realtime/${type}`, { method: "POST" });
+    return (res.data || []).map(t => this.enrichRealtimeTrip(t));
   }
 
-  async getRTBusTrips(): Promise<FALRealtimeTrip[]> {
-    const raw = await this.getRawRealtimeTrips('buses');
-    return raw.map(t => this.enrichRealtimeTrip(t));
+  private async getRTInfo(type: "trains" | "buses", id: string | number): Promise<FALRealtimeTrip | null> {
+    const target = String(id);
+    const trips = await this.getRTTrips(type);
+    return trips.find(t => t.trip_id === target || t.trip_name === target) ?? null;
   }
 
-  private async getRTInfo(type: 'trains' | 'buses', targetId: string): Promise<FALRealtimeTrip | null> {
-    const rawTrips = await this.getRawRealtimeTrips(type);
-    const target = rawTrips.find(t => t.trip_id === targetId || t.trip_name === targetId);
-    return target ? this.enrichRealtimeTrip(target) : null;
-  }
-
-  async getRTTrainInfo(trainNumber: string | number): Promise<FALRealtimeTrip | null> {
-    return this.getRTInfo('trains', String(trainNumber));
-  }
-
-  async getRTBusInfo(busId: string | number): Promise<FALRealtimeTrip | null> {
-    return this.getRTInfo('buses', String(busId));
-  }
+  getRTTrainTrips = () => this.getRTTrips("trains");
+  getRTBusTrips = () => this.getRTTrips("buses");
+  getRTTrainInfo = (trainNumber: string | number) => this.getRTInfo("trains", trainNumber);
+  getRTBusInfo = (busId: string | number) => this.getRTInfo("buses", busId);
 
   async getWarnings(limit: number = 5, offset: number = 0, language: string = "en"): Promise<any[]> {
     const res = await this.baseFetch<any>(`${NEW_API_BASE_URL}/news`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        language,
-        limit: String(limit),
-        offset: String(offset)
-      })
+      method: "POST",
+      body: new URLSearchParams({ language, limit: String(limit), offset: String(offset) })
     });
 
     return res.data || [];

@@ -335,10 +335,10 @@ undici-types@~7.19.0:
   resolved "https://registry.yarnpkg.com/undici-types/-/undici-types-7.19.2.tgz#1b67fc26d0f157a0cba3a58a5b5c1e2276b8ba2a"
   integrity sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg==
 
-undici@^7.16.0:
-  version "7.25.0"
-  resolved "https://registry.yarnpkg.com/undici/-/undici-7.25.0.tgz#7d72fc429a0421769ca2966fd07cac875c85b781"
-  integrity sha512-xXnp4kTyor2Zq+J1FfPI6Eq3ew5h6Vl0F/8d9XU5zZQf1tX9s2Su1/3PiMmUANFULpmksxkClamIZcaUqryHsQ==
+undici@8.11.2:
+  version "8.11.2"
+  resolved "https://registry.yarnpkg.com/undici/-/undici-8.11.2.tgz#b8f6f6504384ae535c8e46f8403fd8075f011d46"
+  integrity sha512-u4UB2/IrKdU6lFxumHmmo1a3fCQO5tzQllRorfoRS63txhrB7xTpSn1PftwC4qEHkOaqP95fCWW4lJzwErwzhQ==
 
 w3c-xmlserializer@^5.0.0:
   version "5.0.0"
