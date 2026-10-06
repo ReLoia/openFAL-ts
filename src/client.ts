@@ -15,7 +15,8 @@ import {
   FALTicket,
   FALValidTicketsResponse,
   FALPayResponse,
-  FALScheduleSolutionDetail
+  FALScheduleSolutionDetail,
+  FALWarning
 } from "./types.js";
 
 const NEW_API_BASE_URL = "https://app.ferrovieappulolucane.it/api";
@@ -23,6 +24,20 @@ const ETICKET_API_BASE_URL = "https://eticket.ferrovieappulolucane.it/b2capp";
 const ETICKET_B2C_BASE_URL = "https://eticket.ferrovieappulolucane.it/b2c";
 
 const hashMD5 = (input: string): string => crypto.createHash("md5").update(input).digest("hex");
+
+const getStatus = (error: any): number | undefined =>
+  error?.response?.status ?? error?.status ?? error?.statusCode;
+
+async function emptyOn500<T>(request: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await request();
+  } catch (error: any) {
+    if (getStatus(error) === 500) return fallback;
+    throw error;
+  }
+}
+
+const asArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
 export class FALSession {
   public email?: string;
@@ -39,7 +54,9 @@ export class FALSession {
       const res = await this.sessionFetch<FALSessionTokenCheckResponse>(`${NEW_API_BASE_URL}/sessionTokens/check`);
       return res.status === true && res.data?.authenticated === true;
     } catch (error: any) {
-      if (error.response?.status === 401) return false;
+      const status = getStatus(error);
+      // 401 = not authenticated, 500 = empty body -> not logged in
+      if (status === 401 || status === 500) return false;
       throw error;
     }
   }
@@ -113,8 +130,11 @@ export class FALSession {
   }
 
   async getValidTickets(): Promise<FALTicket[]> {
-    const res = await this.sessionFetch<FALValidTicketsResponse>(`${NEW_API_BASE_URL}/tickets/valid`);
-    return res.data || [];
+    const res = await emptyOn500(
+      () => this.sessionFetch<FALValidTicketsResponse>(`${NEW_API_BASE_URL}/tickets/valid`),
+      {} as FALValidTicketsResponse
+    );
+    return asArray<FALTicket>(res?.data);
   }
 }
 
@@ -150,8 +170,11 @@ export class FALClient {
   }
 
   async getStations(): Promise<FALStation[]> {
-    const res = await this.baseFetch<FALStationsResponse>(`${NEW_API_BASE_URL}/stations`);
-    return res.data?.sites || [];
+    const res = await emptyOn500(
+      () => this.baseFetch<FALStationsResponse>(`${NEW_API_BASE_URL}/stations`),
+      {} as FALStationsResponse
+    );
+    return asArray<FALStation>(res?.data?.sites);
   }
 
   async getSchedules(
@@ -163,24 +186,35 @@ export class FALClient {
   ): Promise<{ result: FALScheduleSolution[]; session: string }> {
     const session = await this.createSession();
 
-    const result = await session.sessionFetch<FALScheduleSolution[]>(
-      `${ETICKET_B2C_BASE_URL}/json/cerca/soluzioni/`,
-      { query: { from, to, when, time, service } }
+    const raw = await emptyOn500(
+      () => session.sessionFetch<FALScheduleSolution[]>(
+        `${ETICKET_B2C_BASE_URL}/json/cerca/soluzioni/`,
+        { query: { from, to, when, time, service } }
+      ),
+      [] as FALScheduleSolution[]
     );
 
-    return { result, session: session.token };
+    return { result: asArray<FALScheduleSolution>(raw), session: session.token };
   }
 
-  async getScheduleInfo(solutionId: string | number, session: string): Promise<FALScheduleSolutionDetail> {
-    return this.baseFetch<FALScheduleSolutionDetail>(
-      `${ETICKET_B2C_BASE_URL}/json/soluzioni/id/${solutionId}`,
-      { query: { token: session } }
+  async getScheduleInfo(solutionId: string | number, session: string): Promise<FALScheduleSolutionDetail | null> {
+    const res = await emptyOn500<FALScheduleSolutionDetail | null>(
+      () => this.baseFetch<FALScheduleSolutionDetail>(
+        `${ETICKET_B2C_BASE_URL}/json/soluzioni/id/${solutionId}`,
+        { query: { token: session } }
+      ),
+      null
     );
+
+    return res && Object.keys(res).length > 0 ? res : null;
   }
 
   private async getRTTrips(type: "trains" | "buses"): Promise<FALRealtimeTrip[]> {
-    const res = await this.baseFetch<FALRealtimeResponse>(`${NEW_API_BASE_URL}/realtime/${type}`, { method: "POST" });
-    return (res.data || []).map(t => this.enrichRealtimeTrip(t));
+    const res = await emptyOn500(
+      () => this.baseFetch<FALRealtimeResponse>(`${NEW_API_BASE_URL}/realtime/${type}`, { method: "POST" }),
+      {} as FALRealtimeResponse
+    );
+    return asArray<RawFALRealtimeTrip>(res?.data).map(t => this.enrichRealtimeTrip(t));
   }
 
   private async getRTInfo(type: "trains" | "buses", id: string | number): Promise<FALRealtimeTrip | null> {
@@ -194,12 +228,15 @@ export class FALClient {
   getRTTrainInfo = (trainNumber: string | number) => this.getRTInfo("trains", trainNumber);
   getRTBusInfo = (busId: string | number) => this.getRTInfo("buses", busId);
 
-  async getWarnings(limit: number = 5, offset: number = 0, language: string = "en"): Promise<any[]> {
-    const res = await this.baseFetch<any>(`${NEW_API_BASE_URL}/news`, {
-      method: "POST",
-      body: new URLSearchParams({ language, limit: String(limit), offset: String(offset) })
-    });
+  async getWarnings(limit: number = 5, offset: number = 0, language: string = "it"): Promise<FALWarning[]> {
+    const res = await emptyOn500<any>(
+      () => this.baseFetch<any>(`${NEW_API_BASE_URL}/news`, {
+        method: "POST",
+        body: new URLSearchParams({ language, limit: String(limit), offset: String(offset) })
+      }),
+      {}
+    );
 
-    return res.data || [];
+    return asArray<any>(res?.data);
   }
 }
