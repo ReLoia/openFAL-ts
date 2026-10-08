@@ -18,6 +18,7 @@ import {
   FALScheduleSolutionDetail,
   FALWarning
 } from "./types.js";
+import { api, FALApiError } from "./api.js";
 
 const NEW_API_BASE_URL = "https://app.ferrovieappulolucane.it/api";
 const ETICKET_API_BASE_URL = "https://eticket.ferrovieappulolucane.it/b2capp";
@@ -89,7 +90,11 @@ export class FALSession {
     codiceFiscale: string = ""
   ): Promise<string> {
     const cart = (path: string, options?: object) =>
-      this.sessionFetch<any>(`${ETICKET_API_BASE_URL}/json/carrello/${path}`, options);
+      api(`carrello/${path}`, () =>
+        this.sessionFetch<any>(`${ETICKET_API_BASE_URL}/json/carrello/${path}`, options)
+      );
+    
+    await cart("svuota");
 
     const addSol = await cart("aggiungiSoluzione", {
       method: "POST",
@@ -115,15 +120,16 @@ export class FALSession {
     await cart("salva", { method: "POST", body });
     await cart("conta");
 
-    let payRes: FALPayResponse;
-    try {
-      payRes = await cart("paga", { method: "POST", body });
-    } catch {
-      throw new Error("Payment endpoint failed or is down.");
-    }
+    const payRes = await api("paga", () =>
+      cart("paga", { method: "POST", body })
+    ) as FALPayResponse;
 
     if (payRes.operationCode !== 0 || !payRes.urlPayment) {
-      throw new Error(`Failed to generate payment URL: ${JSON.stringify(payRes.errors)}`);
+      throw new FALApiError(
+        `paga: ${(payRes as any).operationMessage ?? JSON.stringify(payRes.errors)}`,
+        undefined,
+        payRes
+      );
     }
 
     return payRes.urlPayment;
@@ -171,7 +177,7 @@ export class FALClient {
 
   async getStations(): Promise<FALStation[]> {
     const res = await emptyOn500(
-      () => this.baseFetch<FALStationsResponse>(`${NEW_API_BASE_URL}/stations`),
+      () => api("stations", () => this.baseFetch<FALStationsResponse>(`${NEW_API_BASE_URL}/stations`)),
       {} as FALStationsResponse
     );
     return asArray<FALStation>(res?.data?.sites);
